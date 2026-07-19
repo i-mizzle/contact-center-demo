@@ -1,0 +1,34 @@
+import React, { useState } from 'react'
+
+const TextareaField = ({inputLabel, fieldId, maxLength, requiredField, hasError, returnFieldValue, preloadValue, disabled, inputPlaceholder}) => {
+
+    const [ fieldValue, setFieldValue ] = useState(preloadValue)
+
+    const setValue = (value) => {
+        setFieldValue(value)
+        returnFieldValue(value)
+    }
+
+    return (
+        <div>
+            {/* {fieldValue} */}
+            <label 
+                className={`text-sm lg:text-md cursor-text z-10 relative py-1 transition mb-1 block duration-200  
+                ${hasError ? 'text-red-400' : 'text-gray-500 dark:text-gray-300'}`}
+            >
+                {inputLabel} {requiredField && requiredField === true && <span className='text-red-400'>*</span>}
+            </label>
+            <textarea 
+                id={fieldId} 
+                 className={`rounded py-4 px-4 text-sm block w-full focus:border-stone-800 focus:outline-none hover:border-gray-200 dark:hover:border-stone-900 border bg-at-black/5 dark:bg-at-dark-gray/5 transition duration-200 focus:bg-white dark:focus:bg-stone-950/60 font-outfit placeholder:font-outfit  ${hasError ? 'border-red-400' : 'border-transparent'} min-h-30`}
+                onChange={(e)=>{setValue(e.target.value)}}
+                value={fieldValue}
+                disabled={disabled}
+                maxLength={maxLength}
+                placeholder={inputPlaceholder}
+                />
+        </div>
+    )
+}
+
+export default TextareaField

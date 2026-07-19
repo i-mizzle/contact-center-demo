@@ -1,0 +1,68 @@
+import './App.css'
+import Incidents from './pages/admin/incidents/Incidents';
+import CommandDashboard from './pages/admin/dashboard/dashboards/CommandDashboard';
+import CallCenterDashboard from './pages/admin/dashboard/dashboards/CallCenterDashboard';
+import DispatchOperationsDashboard from './pages/admin/dashboard/dashboards/DispatchOperationsDashboard';
+import AnalyticsIntelligence from './pages/admin/dashboard/dashboards/AnalyticsIntelligence';
+import ResponderDashboard from './pages/admin/dashboard/dashboards/ResponderDashboard';
+import PerformanceDashboard from './pages/admin/dashboard/dashboards/PerformanceDashboard';
+import PublicWarningDashboard from './pages/admin/dashboard/dashboards/PublicWarningDashboard';
+import { Provider } from 'react-redux';
+
+import { Routes, Route, Navigate } from 'react-router-dom';
+import Login from './pages/auth/Login';
+import Admin from './pages/admin/Admin';
+import Dashboard from './pages/admin/dashboard/Dashboard';
+import { ThemeProvider } from './context/ThemeContext';
+import ErrorNotifier from './components/elements/ErrorNotifier';
+import SuccessNotifier from './components/elements/SuccessNotifier';
+import ScrollToTop from './components/layouts/ScrollToTop';
+import store from './store/store';
+import AdminErrorPage from './pages/admin/AdminErrorPage';
+import IncidentDetails from './pages/admin/incidents/IncidentDetails';
+
+function App() {
+
+  return (
+    <Provider store={store}>
+      <ThemeProvider>
+        <ErrorNotifier />
+        <SuccessNotifier />
+        <ScrollToTop>
+          <Routes>
+            <Route path="/" element={<Login />} />
+            
+            <Route path="/admin" element={<Admin />}>
+              <Route index element={<Navigate replace to="/admin/dashboard" />} />
+              <Route path="/admin/dashboard" element={<Dashboard />}>
+                <Route index element={<Navigate replace to="/admin/dashboard/command" />} />
+                <Route path="/admin/dashboard/command" element={<CommandDashboard />} />
+                <Route path="/admin/dashboard/call-center" element={<CallCenterDashboard />} />
+                <Route path="/admin/dashboard/dispatch-operations" element={<DispatchOperationsDashboard />} />
+                <Route path="/admin/dashboard/analytics-intelligence" element={<AnalyticsIntelligence />} />
+                <Route path="/admin/dashboard/responder" element={<ResponderDashboard />} />
+                <Route path="/admin/dashboard/performance-reporting" element={<PerformanceDashboard />} />
+                <Route path="/admin/dashboard/public-warning-notifications" element={<PublicWarningDashboard />} />
+              </Route>
+
+              <Route path="/admin/incidents" element={<Incidents />} />
+              <Route path="/admin/incidents/:incidentId" element={<IncidentDetails />} />
+              
+              {/* <Route path="/admin/settings" element={<Settings />}>
+                <Route index element={<Navigate replace to="/admin/settings/profile" />} />
+                <Route path="/admin/settings/profile" element={<Profile />} />
+                <Route path="/admin/settings/users" element={<AdminUsers />} />
+                <Route path="/admin/settings/users/:userId" element={<AdminUser />} />
+              </Route> */}
+
+              <Route path="*" element={<AdminErrorPage />} />
+            </Route>
+
+          </Routes>
+        </ScrollToTop>
+      </ThemeProvider>
+    </Provider>
+  )
+}
+
+export default App

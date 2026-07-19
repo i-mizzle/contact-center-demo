@@ -1,0 +1,1012 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import {
+  Circle,
+  MapContainer,
+  Marker,
+  Polyline,
+  Popup,
+  TileLayer,
+} from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import { useTheme } from '../../../context/ThemeContext'
+import {
+  buildFallbackRoutePath,
+  fetchRoadRoute,
+  getPathPointAndNextIndex,
+  getSegmentDistance,
+} from '../../../utils/roadRoutes'
+import ModalDialog from '../../../components/layouts/ModalDialog';
+import DeployAsset from '../../../components/elements/workflow/incidents/DeployAsset';
+import AddIncidentNote from '../../../components/elements/workflow/incidents/AddIncidentNote';
+import ResolveIncident from '../../../components/elements/workflow/incidents/ResolveIncident';
+
+const baseIncidents = [
+  {
+    id: 'inc-abuja-001',
+    title: 'Armed Robbery in Progress',
+    address: 'Aminu Kano Crescent, Wuse 2, Abuja',
+    coordinates: [9.08457, 7.46644],
+    description: 'Two masked suspects reported with firearms near a pharmacy. Civilians sheltering inside nearby stores.',
+    reportedBy: {
+      name: 'Aisha Sule',
+      phoneNumber: '+234 803 442 1199',
+    },
+    emergencyContact: '+234 803 442 1199',
+    type: 'robbery',
+    status: 'active',
+    severity: 'critical',
+    reportedAt: '2026-07-19T09:12:00Z',
+    callPriority: 'P1',
+    unitsAssigned: ['Police Unit P-14', 'Police Unit P-21'],
+  },
+  {
+    id: 'inc-abuja-002',
+    title: 'Residential Fire Outbreak',
+    address: '3rd Avenue, Gwarinpa, Abuja',
+    coordinates: [9.07678, 7.39897],
+    description: 'Kitchen fire has spread to upper floor. Family evacuated. Smoke visible from neighboring blocks.',
+    reportedBy: {
+      name: 'Chukwuemeka Okafor',
+      phoneNumber: '+234 812 991 4450',
+    },
+    emergencyContact: '+234 812 991 4450',
+    type: 'fire',
+    status: 'active',
+    severity: 'high',
+    reportedAt: '2026-07-19T08:55:00Z',
+    callPriority: 'P1',
+    unitsAssigned: ['Fire Service F-06', 'Ambulance A-09'],
+  },
+  {
+    id: 'inc-abuja-003',
+    title: 'Vehicle Theft Complaint',
+    address: 'Jabi Lake Mall Car Park, Abuja',
+    coordinates: [9.07284, 7.42969],
+    description: 'Black Toyota Corolla missing from lower deck parking. CCTV request submitted to security desk.',
+    reportedBy: {
+      name: 'Musa Danjuma',
+      phoneNumber: '+234 809 551 0034',
+    },
+    emergencyContact: '+234 809 551 0034',
+    type: 'theft',
+    status: 'active',
+    severity: 'medium',
+    reportedAt: '2026-07-19T07:21:00Z',
+    callPriority: 'P2',
+    unitsAssigned: ['Police Unit P-08'],
+  },
+  {
+    id: 'inc-abuja-004',
+    title: 'Domestic Disturbance Call',
+    address: 'Games Village, Kaura District, Abuja',
+    coordinates: [9.01941, 7.48952],
+    description: 'Caller reports escalating physical altercation. Child present on-site. Neighbors requested immediate intervention.',
+    reportedBy: {
+      name: 'Tolani Bello',
+      phoneNumber: '+234 705 619 2247',
+    },
+    emergencyContact: '+234 705 619 2247',
+    type: 'domestic',
+    status: 'active',
+    severity: 'high',
+    reportedAt: '2026-07-19T06:48:00Z',
+    callPriority: 'P1',
+    unitsAssigned: ['Police Unit P-03', 'Ambulance A-02'],
+  },
+  {
+    id: 'inc-abuja-005',
+    title: 'Burglary Investigation Complete',
+    address: 'Zone 4, Wuse Market Axis, Abuja',
+    coordinates: [9.06818, 7.48019],
+    description: 'Suspect apprehended. Stolen electronics recovered and handed over to owners.',
+    reportedBy: {
+      name: 'Ifeanyi Nwachukwu',
+      phoneNumber: '+234 816 430 2291',
+    },
+    emergencyContact: '+234 816 430 2291',
+    type: 'robbery',
+    status: 'resolved',
+    severity: 'medium',
+    reportedAt: '2026-07-18T21:16:00Z',
+    callPriority: 'P3',
+    unitsAssigned: ['Police Unit P-11'],
+  },
+]
+
+const resolvedIncidentSeed = [
+  { title: 'Market Pickpocketing Report', address: 'Utako Market, Abuja', coordinates: [9.06158, 7.42541], type: 'theft', severity: 'low' },
+  { title: 'Nighttime Store Break-In', address: 'Garki Area 10, Abuja', coordinates: [9.02962, 7.48944], type: 'robbery', severity: 'medium' },
+  { title: 'Domestic Welfare Check', address: 'Lokogoma District, Abuja', coordinates: [8.96248, 7.44751], type: 'domestic', severity: 'medium' },
+  { title: 'Electrical Fire Contained', address: 'Kado Estate, Abuja', coordinates: [9.08093, 7.43516], type: 'fire', severity: 'high' },
+  { title: 'Motorcycle Theft Follow-Up', address: 'Kubwa Phase 2, Abuja', coordinates: [9.16628, 7.32477], type: 'theft', severity: 'low' },
+  { title: 'ATM Robbery Attempt Averted', address: 'Wuye District, Abuja', coordinates: [9.06435, 7.44879], type: 'robbery', severity: 'high' },
+  { title: 'Gas Leak Fire Alert', address: 'Dawaki Junction, Abuja', coordinates: [9.11925, 7.38222], type: 'fire', severity: 'medium' },
+  { title: 'Family Dispute De-escalated', address: 'Karu Site, Abuja', coordinates: [9.00358, 7.56213], type: 'domestic', severity: 'low' },
+  { title: 'Warehouse Theft Recovery', address: 'Idu Industrial Area, Abuja', coordinates: [9.09064, 7.51743], type: 'theft', severity: 'medium' },
+  { title: 'Street Mugging Suspect Arrested', address: 'Jahi District, Abuja', coordinates: [9.09108, 7.4466], type: 'robbery', severity: 'medium' },
+  { title: 'Apartment Kitchen Fire', address: 'Lifecamp, Abuja', coordinates: [9.10345, 7.40139], type: 'fire', severity: 'medium' },
+  { title: 'Domestic Threat Intervention', address: 'Gudu District, Abuja', coordinates: [9.00954, 7.46748], type: 'domestic', severity: 'high' },
+  { title: 'Phone Snatching Incident', address: 'Area 1 Roundabout, Abuja', coordinates: [9.03995, 7.49795], type: 'theft', severity: 'low' },
+  { title: 'Armed Burglary Response', address: 'Maitama Extension, Abuja', coordinates: [9.09578, 7.50006], type: 'robbery', severity: 'high' },
+  { title: 'Transformer Fire Response', address: 'Karmo, Abuja', coordinates: [9.0592, 7.38091], type: 'fire', severity: 'medium' },
+  { title: 'Neighbor Disturbance Call', address: 'Asokoro Extension, Abuja', coordinates: [9.03678, 7.54262], type: 'domestic', severity: 'low' },
+  { title: 'Office Laptop Theft', address: 'Central Area, Abuja', coordinates: [9.05114, 7.49288], type: 'theft', severity: 'medium' },
+  { title: 'Fuel Station Robbery Alert', address: 'Gwarimpa 1st Avenue, Abuja', coordinates: [9.08563, 7.39469], type: 'robbery', severity: 'high' },
+  { title: 'Workshop Fire Emergency', address: 'Durumi District, Abuja', coordinates: [9.02294, 7.44447], type: 'fire', severity: 'high' },
+  { title: 'Domestic Emergency Follow-Up', address: 'Apo Resettlement, Abuja', coordinates: [9.00431, 7.50274], type: 'domestic', severity: 'medium' },
+]
+
+const additionalResolvedIncidents = resolvedIncidentSeed.map((incident, index) => ({
+  id: `inc-abuja-r-${(index + 6).toString().padStart(3, '0')}`,
+  title: incident.title,
+  address: incident.address,
+  coordinates: incident.coordinates,
+  description: `Follow-up report closed by dispatch team. Case archived after verification and field update ${index + 1}.`,
+  reportedBy: {
+    name: `Caller ${index + 6}`,
+    phoneNumber: `+234 810 ${String(3000000 + index * 173).padStart(7, '0')}`,
+  },
+  emergencyContact: `+234 810 ${String(3000000 + index * 173).padStart(7, '0')}`,
+  type: incident.type,
+  status: 'resolved',
+  severity: incident.severity,
+  reportedAt: new Date(Date.UTC(2026, 6, 18, 20 - Math.floor(index / 2), (index * 7) % 60, 0)).toISOString(),
+  callPriority: index % 4 === 0 ? 'P2' : 'P3',
+  unitsAssigned: ['Police Unit P-11'],
+}))
+
+const incidents = [...baseIncidents, ...additionalResolvedIncidents]
+
+const allAssets = [
+  {
+    id: 'asset-police-01',
+    name: 'Police Unit P-14',
+    type: 'police unit',
+    status: 'deployed',
+    coordinates: [9.08335, 7.46298],
+    deployedIncidentId: 'inc-abuja-001',
+  },
+  {
+    id: 'asset-police-02',
+    name: 'Police Unit P-08',
+    type: 'police unit',
+    status: 'ready to deploy',
+    coordinates: [9.06621, 7.42453],
+  },
+  {
+    id: 'asset-police-03',
+    name: 'Police Unit P-03',
+    type: 'police unit',
+    status: 'ready to deploy',
+    coordinates: [9.02621, 7.49253],
+  },
+  {
+    id: 'asset-fire-01',
+    name: 'Fire Service F-06',
+    type: 'fire service unit',
+    status: 'deployed',
+    coordinates: [9.07454, 7.40766],
+    deployedIncidentId: 'inc-abuja-002',
+  },
+  {
+    id: 'asset-fire-02',
+    name: 'Fire Service F-02',
+    type: 'fire service unit',
+    status: 'ready to deploy',
+    coordinates: [9.09454, 7.43766],
+  },
+  {
+    id: 'asset-ambulance-01',
+    name: 'Ambulance A-09',
+    type: 'ambulance unit',
+    status: 'ready to deploy',
+    coordinates: [9.07833, 7.43912],
+  },
+  {
+    id: 'asset-ambulance-02',
+    name: 'Ambulance A-02',
+    type: 'ambulance unit',
+    status: 'ready to deploy',
+    coordinates: [9.0168, 7.48367],
+  },
+  {
+    id: 'asset-ambulance-03',
+    name: 'Ambulance A-03',
+    type: 'ambulance unit',
+    status: 'unavailable',
+    coordinates: [9.0338, 7.49367],
+  },
+  {
+    id: 'asset-nema-01',
+    name: 'NEMA Station North',
+    type: 'nema station',
+    status: 'ready to deploy',
+    coordinates: [9.10822, 7.45236],
+  },
+]
+
+const typeTone = {
+  robbery: 'bg-red-500/15 text-red-600 dark:text-red-300',
+  fire: 'bg-orange-500/15 text-orange-600 dark:text-orange-300',
+  theft: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+  domestic: 'bg-rose-500/15 text-rose-600 dark:text-rose-300',
+}
+
+const statusTone = {
+  active: 'bg-emerald/20 text-emerald-700 dark:text-light-green',
+  resolved: 'bg-stone-200 text-stone-700 dark:bg-stone-700 dark:text-stone-200',
+}
+
+const assetStatusTone = {
+  deployed: 'text-red-600 dark:text-red-300',
+  'ready to deploy': 'text-emerald-700 dark:text-light-green',
+  unavailable: 'text-stone-500 dark:text-stone-400',
+  'on site': 'text-sky-700 dark:text-sky-300',
+}
+
+const assetFill = {
+  deployed: '#ef4444',
+  'ready to deploy': '#10b981',
+  unavailable: '#78716c',
+  'on site': '#0ea5e9',
+}
+
+const incidentFillByType = {
+  robbery: '#ef4444',
+  fire: '#f97316',
+  theft: '#f59e0b',
+  domestic: '#e11d48',
+}
+
+const SIMULATION_TICK_MS = 120
+const MAP_ZOOM = 14
+
+const buildIncidentIcon = (incidentType) => L.divIcon({
+  className: 'incident-pin-marker',
+  html: `
+    <div style="position: relative; width: 24px; height: 24px; transform: scale(1.2); transition: transform .2s;">
+      <div style="position:absolute; inset:0; border-radius:9999px; background:${incidentFillByType[incidentType] ?? '#10b981'}; border:2px solid #ffffff;"></div>
+      <div style="position:absolute; left:50%; bottom:-8px; width:10px; height:10px; background:${incidentFillByType[incidentType] ?? '#10b981'}; transform:translateX(-50%) rotate(45deg);"></div>
+    </div>
+  `,
+  iconSize: [24, 32],
+  iconAnchor: [12, 30],
+  popupAnchor: [0, -28],
+})
+
+const buildAssetIcon = (assetStatus) => L.divIcon({
+  className: 'asset-marker',
+  html: `
+    <div style="width:16px; height:16px; border-radius:4px; background:${assetFill[assetStatus] ?? '#78716c'}; border:2px solid #ffffff;"></div>
+  `,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+  popupAnchor: [0, -12],
+})
+
+const getRemainingEtaSeconds = (progress, speed) => {
+  if (progress >= 1 || speed <= 0) {
+    return 0
+  }
+
+  return Math.ceil((((1 - progress) / speed) * SIMULATION_TICK_MS) / 1000)
+}
+
+const formatEta = (seconds) => {
+  if (seconds <= 0) {
+    return 'On Site'
+  }
+
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
+const createIncidentNotes = (incidentId) => ([
+  {
+    id: `${incidentId}-note-1`,
+    author: 'Mariam Yusuf',
+    role: 'Dispatcher',
+    text: '911 intake completed. Caller details and event timeline validated.',
+    time: '2026-07-19T09:18:00Z',
+  },
+  {
+    id: `${incidentId}-note-2`,
+    author: 'Ibrahim Nnaji',
+    role: 'Responder',
+    text: 'Perimeter established. Awaiting specialized support for scene control.',
+    time: '2026-07-19T09:23:00Z',
+  },
+  {
+    id: `${incidentId}-note-3`,
+    author: 'Ruth Adesina',
+    role: 'Command Officer',
+    text: 'Incident remains under active monitoring. Keep updates every 5 minutes.',
+    time: '2026-07-19T09:29:00Z',
+  },
+])
+
+const aiAnalysisByIncidentType = {
+  robbery: {
+    summary: 'Threat pattern indicates an active violent-property crime with elevated civilian exposure near commercial frontage.',
+    recommendations: [
+      'Lock down the immediate perimeter and direct civilians into sheltered interior zones.',
+      'Prioritize armed police interception with a secondary unit covering escape routes.',
+      'Preserve witness statements and nearby CCTV feeds for post-scene evidence handling.',
+    ],
+  },
+  fire: {
+    summary: 'Incident profile suggests escalating structural risk with likely smoke migration and secondary casualty exposure.',
+    recommendations: [
+      'Keep fire suppression units on offensive attack while confirming building evacuation status.',
+      'Stage ambulance support outside the hot zone for smoke inhalation triage.',
+      'Request utility isolation and prevent public re-entry until heat spread is contained.',
+    ],
+  },
+  theft: {
+    summary: 'Current indicators point to a contained property-loss incident with strong value in rapid evidence preservation.',
+    recommendations: [
+      'Secure the scene boundary and limit disturbance around the last confirmed asset location.',
+      'Collect surveillance access, timestamps, and witness movement accounts immediately.',
+      'Broadcast suspect or vehicle descriptors to nearby patrol units for area canvassing.',
+    ],
+  },
+  domestic: {
+    summary: 'Call details indicate a volatile interpersonal scene with a credible risk of re-escalation and vulnerable persons present.',
+    recommendations: [
+      'Separate involved parties on arrival and conduct an immediate welfare check on dependants.',
+      'Deploy responders trained in de-escalation before considering scene transfer or arrest action.',
+      'Document visible injuries, threats, and prior call history for safeguarding follow-up.',
+    ],
+  },
+}
+
+const buildAiAnalysis = (incident) => {
+  if (!incident) {
+    return null
+  }
+
+  const template = aiAnalysisByIncidentType[incident.type] ?? {
+    summary: 'AI triage indicates the scene needs continued command oversight while responders stabilize the incident.',
+    recommendations: [
+      'Maintain command updates until field responders confirm scene stabilization.',
+      'Validate caller details and preserve all available evidence from the location.',
+      'Prepare follow-up escalation if on-scene conditions deteriorate.',
+    ],
+  }
+
+  return {
+    headline: `${incident.type.charAt(0).toUpperCase()}${incident.type.slice(1)} risk assessment generated from the current incident narrative.`,
+    summary: template.summary,
+    recommendations: template.recommendations,
+  }
+}
+
+const IncidentDetails = () => {
+  const { incidentId } = useParams()
+  const { isDarkMode } = useTheme()
+  const incident = useMemo(
+    () => incidents.find((item) => item.id === incidentId) ?? null,
+    [incidentId],
+  )
+
+  const [incidentStatus, setIncidentStatus] = useState(incident?.status ?? 'active')
+  const [notes, setNotes] = useState(() => createIncidentNotes(incidentId ?? 'incident'))
+  const [assetProgressById, setAssetProgressById] = useState({})
+  const [roadPathByAssetId, setRoadPathByAssetId] = useState({})
+  const [isAiAnalysisLoading, setIsAiAnalysisLoading] = useState(true)
+  const [aiAnalysis, setAiAnalysis] = useState(() => buildAiAnalysis(incident))
+
+  useEffect(() => {
+    setIncidentStatus(incident?.status ?? 'active')
+  }, [incident])
+
+  useEffect(() => {
+    setNotes(createIncidentNotes(incidentId ?? 'incident'))
+    setAssetProgressById({})
+  }, [incidentId])
+
+  useEffect(() => {
+    setIsAiAnalysisLoading(true)
+    setAiAnalysis(null)
+
+    const timer = window.setTimeout(() => {
+      setAiAnalysis(buildAiAnalysis(incident))
+      setIsAiAnalysisLoading(false)
+    }, 2600)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [incident])
+
+  const nearbyAssets = useMemo(() => {
+    if (!incident) {
+      return []
+    }
+
+    return allAssets
+      .map((asset) => {
+        const distance = getSegmentDistance(incident.coordinates, asset.coordinates)
+        const shouldDeployInitially = incident.status === 'active' && incident.unitsAssigned.includes(asset.name)
+        return {
+          ...asset,
+          distance,
+          status: shouldDeployInitially ? 'deployed' : asset.status,
+          deployedIncidentId: shouldDeployInitially ? incident.id : asset.deployedIncidentId,
+        }
+      })
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 6)
+  }, [incident])
+
+  const [assetsState, setAssetsState] = useState([])
+
+  useEffect(() => {
+    setAssetsState(nearbyAssets)
+  }, [nearbyAssets])
+
+  const deployedAssetRoutes = useMemo(() => {
+    if (!incident || incidentStatus !== 'active') {
+      return []
+    }
+
+    return assetsState
+      .filter((asset) => asset.status === 'deployed' && asset.deployedIncidentId === incident.id)
+      .map((asset, index) => ({
+        asset,
+        targetIncident: incident,
+        speed: 0.0035 + index * 0.001,
+      }))
+  }, [assetsState, incident, incidentStatus])
+
+  const deployedRouteByAssetId = useMemo(
+    () => Object.fromEntries(deployedAssetRoutes.map((route) => [route.asset.id, route])),
+    [deployedAssetRoutes],
+  )
+
+  useEffect(() => {
+    if (deployedAssetRoutes.length === 0) {
+      setRoadPathByAssetId({})
+      return undefined
+    }
+
+    let isCancelled = false
+
+    const fetchRoadPaths = async () => {
+      const routeEntries = await Promise.all(deployedAssetRoutes.map(async (route) => {
+        try {
+          const routeData = await fetchRoadRoute(route.asset.coordinates, route.targetIncident.coordinates)
+          if (routeData) {
+            return [route.asset.id, routeData]
+          }
+        } catch {
+          // Keep the temporary simulation path until the real road path is available.
+        }
+
+        return null
+      }))
+
+      if (!isCancelled) {
+        setRoadPathByAssetId(Object.fromEntries(routeEntries.filter(Boolean)))
+      }
+    }
+
+    fetchRoadPaths()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [deployedAssetRoutes])
+
+  const routeSpeedByAssetId = useMemo(
+    () => Object.fromEntries(deployedAssetRoutes.map((route) => {
+      const routeDuration = roadPathByAssetId[route.asset.id]?.durationSeconds
+      if (!routeDuration || routeDuration <= 0) {
+        return [route.asset.id, route.speed]
+      }
+
+      const durationBasedSpeed = (SIMULATION_TICK_MS / 1000) / routeDuration
+      return [route.asset.id, Math.max(0.0005, Math.min(durationBasedSpeed, route.speed))]
+    })),
+    [deployedAssetRoutes, roadPathByAssetId],
+  )
+
+  useEffect(() => {
+    if (deployedAssetRoutes.length === 0 || incidentStatus !== 'active') {
+      return undefined
+    }
+
+    const timer = window.setInterval(() => {
+      setAssetProgressById((previous) => {
+        const next = { ...previous }
+        deployedAssetRoutes.forEach((route) => {
+          const roadPath = roadPathByAssetId[route.asset.id]?.points
+          if (!roadPath || roadPath.length < 2) {
+            next[route.asset.id] = previous[route.asset.id] ?? 0
+            return
+          }
+
+          const current = next[route.asset.id] ?? 0
+          const routeSpeed = routeSpeedByAssetId[route.asset.id] ?? route.speed
+          next[route.asset.id] = Math.min(current + routeSpeed, 1)
+        })
+        return next
+      })
+    }, SIMULATION_TICK_MS)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [deployedAssetRoutes, incidentStatus, roadPathByAssetId, routeSpeedByAssetId])
+
+  useEffect(() => {
+    if (!incident || incidentStatus !== 'active') {
+      return
+    }
+
+    setAssetsState((previous) => {
+      let hasStatusChange = false
+
+      const next = previous.map((asset) => {
+        if (asset.status !== 'deployed' || asset.deployedIncidentId !== incident.id) {
+          return asset
+        }
+
+        const progress = assetProgressById[asset.id] ?? 0
+        if (progress < 1) {
+          return asset
+        }
+
+        hasStatusChange = true
+        return {
+          ...asset,
+          status: 'on site',
+        }
+      })
+
+      return hasStatusChange ? next : previous
+    })
+  }, [assetProgressById, incident, incidentStatus])
+
+  const animatedAssets = useMemo(
+    () => assetsState.map((asset) => {
+      if (!incident || !asset.deployedIncidentId || asset.deployedIncidentId !== incident.id) {
+        return {
+          ...asset,
+          currentCoordinates: asset.coordinates,
+          progress: null,
+          etaSeconds: null,
+        }
+      }
+
+      const route = deployedRouteByAssetId[asset.id]
+      if (!route) {
+        return {
+          ...asset,
+          currentCoordinates: asset.coordinates,
+          progress: null,
+          etaSeconds: null,
+        }
+      }
+
+      const progress = assetProgressById[asset.id] ?? 0
+      const roadPath = roadPathByAssetId[asset.id]?.points ?? null
+      const simulationPath = roadPath ?? buildFallbackRoutePath(asset.coordinates, route.targetIncident.coordinates)
+      const effectiveProgress = roadPath && roadPath.length >= 2 ? progress : 0
+      const { point } = getPathPointAndNextIndex(simulationPath, effectiveProgress)
+      const routeSpeed = routeSpeedByAssetId[asset.id] ?? route.speed
+
+      return {
+        ...asset,
+        currentCoordinates: point ?? asset.coordinates,
+        progress: effectiveProgress,
+        routePath: roadPath,
+        simulationPath,
+        etaSeconds: roadPath && roadPath.length >= 2 ? getRemainingEtaSeconds(progress, routeSpeed) : null,
+      }
+    }),
+    [assetProgressById, assetsState, deployedRouteByAssetId, incident, roadPathByAssetId, routeSpeedByAssetId],
+  )
+
+  const deploymentMeta = useMemo(() => {
+    const deployedAssets = animatedAssets.filter((asset) => asset.deployedIncidentId === incident?.id)
+    if (deployedAssets.length === 0) {
+      return null
+    }
+
+    const soonestEta = deployedAssets.reduce((min, asset) => Math.min(min, asset.etaSeconds ?? 0), Number.POSITIVE_INFINITY)
+    return {
+      allOnSite: deployedAssets.every((asset) => asset.status === 'on site'),
+      soonestEtaSeconds: Number.isFinite(soonestEta) ? soonestEta : 0,
+      assets: deployedAssets,
+    }
+  }, [animatedAssets, incident])
+
+  const [dispatching, setDispatching] = useState(false)
+  const [assetToDispatch, setAssetToDispatch] = useState(null)
+
+  const deployAsset = () => {
+    setAssetsState((previous) => previous.map((item) => (
+      item.id === assetToDispatch.id
+        ? { ...item, status: 'deployed', deployedIncidentId: incident.id }
+        : item
+    )))
+    setAssetProgressById((previous) => ({ ...previous, [assetToDispatch.id]: 0 }))
+  }
+
+  const startAssetDeployment = (asset) => {
+    setAssetToDispatch(asset)
+    setTimeout(() => {
+      setDispatching(true)
+    }, 200)
+  }
+
+  const endAssetDeployment = () => {
+    setDispatching(false)
+    setTimeout(() => {
+      setAssetToDispatch(null)
+    }, 200)
+  }
+
+  const [addingNote, setAddingNote] = useState(false)
+  const addNote = (note) => {
+    setNotes((previous) => ([
+      {
+        id: `${incident.id}-note-${Date.now()}`,
+        author: 'Amina Salisu',
+        role: 'Dispatcher',
+        text: note,
+        time: new Date().toISOString(),
+      },
+      ...previous,
+    ]))
+  }
+
+  const [resolving, setResolving] = useState(false)
+
+  const resolveIncident = () => {
+    setIncidentStatus('resolved')
+    setAssetsState((previous) => previous.map((asset) => (
+      asset.deployedIncidentId === incident.id ? { ...asset, status: 'ready to deploy', deployedIncidentId: null } : asset
+    )))
+    setAssetProgressById({})
+  }
+
+  if (!incident) {
+    return (
+      <section className="space-y-3">
+        <h1 className="text-2xl font-semibold text-stone-900 dark:text-stone-100">Incident not found</h1>
+        <p className="text-sm text-stone-600 dark:text-stone-300">The incident you requested could not be found.</p>
+        <Link
+          to="/admin/incidents"
+          className="inline-flex rounded-md bg-emerald px-3 py-2 text-sm font-semibold text-stone-900 dark:bg-light-green"
+        >
+          Back to incidents
+        </Link>
+      </section>
+    )
+  }
+
+  return (
+    <>
+      <section className="space-y-4">
+        <div className="flex w-full items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold tracking-wide text-emerald dark:text-light-green">Incident Details</p>
+            <h1 className="mt-1 text-2xl font-semibold text-stone-900 dark:text-stone-100">{incident.title}</h1>
+            <p className="mt-1 text-sm text-stone-600 dark:text-stone-300">{incident.address}</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-md border border-stone-300 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800"
+              onClick={() => setAddingNote(true)}
+            >
+              Add a note
+            </button>
+            <button
+              type="button"
+              className="rounded-md bg-emerald px-3 py-2 text-xs font-semibold text-stone-900 transition hover:brightness-95 dark:bg-light-green"
+              onClick={() => {
+                setResolving(true)
+              }}
+            >
+              Resolve Incident
+            </button>
+          </div>
+        </div>
+
+        <div className="flex w-full flex-col items-start gap-4 xl:flex-row">
+          <div className="w-full rounded-lg border border-stone-200 bg-white p-2 dark:border-stone-900/50 dark:bg-stone-900/10 xl:w-2/3">
+            <div className="h-155 w-full overflow-hidden rounded-xl border border-stone-200 dark:border-stone-700/60">
+              <MapContainer center={incident.coordinates} zoom={MAP_ZOOM} className="h-full w-full">
+                <TileLayer
+                  attribution='&copy; OpenStreetMap contributors &copy; CARTO'
+                  url={
+                    isDarkMode
+                      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+                  }
+                />
+
+                <Marker position={incident.coordinates} icon={buildIncidentIcon(incident.type)}>
+                  <Popup minWidth={240}>
+                    <div>
+                      <p className="text-sm font-semibold text-stone-900">{incident.title}</p>
+                      <p className="text-xs text-stone-500">{incident.address}</p>
+                      <p className="mt-1 text-xs text-stone-700">{incident.description}</p>
+                    </div>
+                  </Popup>
+                </Marker>
+
+                {deployedAssetRoutes.map((route) => {
+                  const progress = assetProgressById[route.asset.id] ?? 0
+                  const roadPath = roadPathByAssetId[route.asset.id]?.points
+                  const displayPath = roadPath ?? buildFallbackRoutePath(
+                    route.asset.coordinates,
+                    route.targetIncident.coordinates,
+                  )
+
+                  if (!displayPath || displayPath.length < 2) {
+                    return null
+                  }
+
+                  const isRoadPathLoaded = Boolean(roadPath && roadPath.length >= 2)
+                  const effectiveProgress = isRoadPathLoaded ? progress : 0
+                  const movingState = getPathPointAndNextIndex(displayPath, effectiveProgress)
+                  const movingCoordinates = movingState.point ?? route.asset.coordinates
+                  const traveledPath = displayPath.slice(0, Math.max(1, movingState.nextIndex))
+                  const remainingPath = [movingCoordinates, ...displayPath.slice(movingState.nextIndex)]
+
+                  return (
+                    <React.Fragment key={`route-${route.asset.id}`}>
+                      <Polyline
+                        positions={displayPath}
+                        pathOptions={{
+                          color: '#0ea5e9',
+                          weight: 2,
+                          dashArray: isRoadPathLoaded ? '8 8' : '4 10',
+                          opacity: isRoadPathLoaded ? 0.45 : 0.28,
+                        }}
+                      />
+                      <Polyline
+                        positions={traveledPath.length > 1 ? traveledPath : [route.asset.coordinates, movingCoordinates]}
+                        pathOptions={{ color: '#2563eb', weight: 3, opacity: 0.9 }}
+                      />
+                      <Polyline
+                        positions={remainingPath.length > 1 ? remainingPath : [movingCoordinates, route.targetIncident.coordinates]}
+                        pathOptions={{ color: '#22c55e', weight: 3, opacity: 0.8 }}
+                      />
+                    </React.Fragment>
+                  )
+                })}
+
+                {animatedAssets.map((asset) => (
+                  <Marker key={asset.id} position={asset.currentCoordinates} icon={buildAssetIcon(asset.status)}>
+                    <Popup minWidth={220}>
+                      <div>
+                        <p className="text-sm font-semibold text-stone-900">{asset.name}</p>
+                        <p className="text-xs text-stone-500">{asset.type}</p>
+                        <p className="text-xs font-semibold text-stone-800">Status: {asset.status}</p>
+                        {asset.deployedIncidentId === incident.id ? (
+                          <p className="text-xs text-stone-700">
+                            {asset.etaSeconds && asset.etaSeconds > 0 ? `ETA ${formatEta(asset.etaSeconds)}` : 'On Site'}
+                          </p>
+                        ) : null}
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
+
+                <Circle
+                  center={incident.coordinates}
+                  radius={450}
+                  pathOptions={{
+                    color: '#10b981',
+                    fillColor: '#10b981',
+                    fillOpacity: 0.08,
+                    weight: 1,
+                  }}
+                />
+              </MapContainer>
+            </div>
+
+            <article className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 dark:border-stone-700/50 dark:bg-stone-800/20">
+              <h2 className="text-sm font-semibold text-stone-800 dark:text-stone-100">Incident Notes</h2>
+              <div className="mt-2 space-y-2">
+                {notes.map((note) => (
+                  <div key={note.id} className="rounded-md border border-stone-200 bg-white p-2.5 dark:border-stone-700/40 dark:bg-stone-900/20">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-stone-900 dark:text-stone-100">{note.author}</p>
+                      <span className="rounded bg-stone-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-stone-700 dark:bg-stone-700 dark:text-stone-200">
+                        {note.role}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-stone-600 dark:text-stone-300">{note.text}</p>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </div>
+
+          <div className="w-full space-y-3 xl:w-1/3">
+            <article className="rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-900/50 dark:bg-stone-900/10">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-stone-800 dark:text-stone-100">Incident Profile</h2>
+                <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase ${statusTone[incidentStatus] ?? statusTone.active}`}>
+                  {incidentStatus}
+                </span>
+              </div>
+
+              <p className="mt-2 text-xs text-stone-700 dark:text-stone-200">{incident.description}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${typeTone[incident.type]}`}>
+                  {incident.type}
+                </span>
+                <span className="rounded bg-stone-200 px-1.5 py-0.5 text-[10px] font-semibold text-stone-700 dark:bg-stone-700 dark:text-stone-200">
+                  {incident.callPriority}
+                </span>
+                <span className="rounded bg-stone-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-stone-700 dark:bg-stone-700 dark:text-stone-200">
+                  {incident.severity}
+                </span>
+              </div>
+
+              {deploymentMeta ? (
+                <div className="mt-3 rounded-md bg-indigo-500/10 px-2 py-2 text-[11px] text-indigo-700 dark:text-indigo-300">
+                  {deploymentMeta.allOnSite
+                    ? 'Assets On Site'
+                    : `Assets Deployed • ETA ${formatEta(deploymentMeta.soonestEtaSeconds)}`}
+                </div>
+              ) : null}
+
+              <div className="mt-3 grid gap-1 text-[11px] text-stone-600 dark:text-stone-300">
+                <p>
+                  Reported by: <span className="font-semibold text-stone-800 dark:text-stone-100">{incident.reportedBy.name}</span>
+                </p>
+                <p>Phone: {incident.reportedBy.phoneNumber}</p>
+                <p>Emergency line: {incident.emergencyContact}</p>
+                <p>
+                  Coordinates: {incident.coordinates[0].toFixed(5)}, {incident.coordinates[1].toFixed(5)}
+                </p>
+              </div>
+            </article>
+
+
+            {/* AI ANALYSIS */}
+            <article className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-400/10 dark:bg-yellow-900/10">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-yellow-950 dark:text-yellow-100">AI Analysis</h2>
+                {/* <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase ${statusTone[incidentStatus] ?? statusTone.active}`}>
+                  {incidentStatus}
+                </span> */}
+              </div>
+
+              {isAiAnalysisLoading ? (
+                <div className="mt-3 space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-yellow-700 dark:text-yellow-300">
+                    Processing incident narrative...
+                  </p>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-yellow-200/80 dark:bg-yellow-100/10">
+                    <div className="h-full w-2/3 animate-pulse rounded-full bg-yellow-500/70 dark:bg-yellow-300/60" />
+                  </div>
+                  <p className="text-[11px] text-yellow-800/80 dark:text-yellow-100/70">
+                    Reviewing caller report, threat pattern, severity level, and likely responder priorities.
+                  </p>
+                </div>
+              ) : aiAnalysis ? (
+                <div className="mt-3 space-y-3">
+                  <div className="rounded-md border border-yellow-300/80 bg-white/70 px-3 py-2 dark:border-yellow-200/10 dark:bg-stone-900/20">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-yellow-800 dark:text-yellow-200">
+                      Assessment
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-stone-900 dark:text-stone-100">{aiAnalysis.headline}</p>
+                    <p className="mt-1 text-[11px] text-stone-700 dark:text-stone-300">{aiAnalysis.summary}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-yellow-800 dark:text-yellow-200">
+                      Recommended Next Actions
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {aiAnalysis.recommendations.map((recommendation, index) => (
+                        <div
+                          key={`${incident.id}-ai-recommendation-${index + 1}`}
+                          className="rounded-md border border-yellow-300/70 bg-white/80 px-3 py-2 text-[11px] text-stone-800 dark:border-yellow-200/10 dark:bg-stone-900/20 dark:text-stone-200"
+                        >
+                          <span className="mr-2 inline-flex h-4 w-4 items-center justify-center rounded-full bg-yellow-500/20 text-[10px] font-bold text-yellow-900 dark:bg-yellow-300/20 dark:text-yellow-100">
+                            {index + 1}
+                          </span>
+                          {recommendation}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </article>
+
+            <article className="rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-900/50 dark:bg-stone-900/10">
+              <h2 className="text-sm font-semibold text-stone-800 dark:text-stone-100">Nearby Assets</h2>
+              <div className="mt-2 space-y-2">
+                {animatedAssets.map((asset) => {
+                  const isAssignedHere = asset.deployedIncidentId === incident.id
+                  const canDeploy = incidentStatus === 'active' && !isAssignedHere && asset.status !== 'unavailable'
+
+                  return (
+                    <div key={asset.id} className="rounded-md bg-stone-100 px-3 py-2 dark:bg-stone-800/30">
+                      <p className="text-xs font-semibold text-stone-800 dark:text-stone-100">{asset.name}</p>
+                      <p className="text-[11px] text-stone-500 dark:text-stone-400">{asset.type}</p>
+                      <p className={`text-[11px] font-semibold ${assetStatusTone[asset.status] ?? assetStatusTone['ready to deploy']}`}>
+                        {asset.status}
+                      </p>
+                      {isAssignedHere ? (
+                        <p className="text-[11px] text-stone-600 dark:text-stone-300">
+                          {asset.etaSeconds && asset.etaSeconds > 0 ? `ETA ${formatEta(asset.etaSeconds)}` : 'On Site'}
+                        </p>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        disabled={!canDeploy}
+                        onClick={() => {
+                          startAssetDeployment(asset)
+                        }}
+                        className="mt-2 rounded-md bg-emerald px-3 py-1.5 text-xs font-semibold text-stone-900 transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-light-green"
+                      >
+                        {isAssignedHere ? 'Deployed' : 'Deploy Asset'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <ModalDialog
+        shown={dispatching}
+        closeFunction={()=>{endAssetDeployment()}}
+        dialogTitle={`Deploy ${assetToDispatch?.name} to this incident`}
+        maxWidthClass={`max-w-lg`}
+      >
+        <DeployAsset
+          doDeploy={deployAsset}
+          asset={assetToDispatch}
+          close={endAssetDeployment}
+        />
+      </ModalDialog>
+
+      <ModalDialog
+        shown={addingNote}
+        closeFunction={()=>{setAddingNote(false)}}
+        dialogTitle={`Add a note for this incident`}
+        maxWidthClass={`max-w-lg`}
+      >
+        <AddIncidentNote
+          doAddNote={(note)=>{addNote(note)}}
+          asset={assetToDispatch}
+          close={endAssetDeployment}
+        />
+      </ModalDialog>
+
+      <ModalDialog
+        shown={resolving}
+        closeFunction={()=>{setResolving(false)}}
+        dialogTitle={`Resolve this incident`}
+        maxWidthClass={`max-w-lg`}
+      >
+        <ResolveIncident 
+          doResolve={()=>{resolveIncident()}}
+          close={()=>{setResolving(false)}}
+        />
+      </ModalDialog>
+    </>
+  )
+}
+
+export default IncidentDetails
