@@ -19,6 +19,7 @@ import {
   fetchRoadRoute,
   getPathPointAndNextIndex,
 } from '../../../utils/roadRoutes'
+import ModalDialog from '../../../components/layouts/ModalDialog'
 
 const baseIncidents = [
   {
@@ -870,10 +871,10 @@ const Incidents = () => {
         dialogTitle={`Record a new incident`}
         maxWidthClass={`max-w-lg`}
       >
-        <ResolveIncident 
+        {/* <ResolveIncident 
           doResolve={()=>{resolveIncident()}}
           close={()=>{setResolving(false)}}
-        />
+        /> */}
       </ModalDialog>
     </>
   )
