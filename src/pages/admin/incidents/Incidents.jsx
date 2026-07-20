@@ -20,6 +20,7 @@ import {
   getPathPointAndNextIndex,
 } from '../../../utils/roadRoutes'
 import ModalDialog from '../../../components/layouts/ModalDialog'
+import RecordNewIncident from '../../../components/elements/workflow/incidents/RecordNewIncident';
 
 const baseIncidents = [
   {
@@ -869,12 +870,9 @@ const Incidents = () => {
         shown={recordingIncident}
         closeFunction={()=>{setRecordingIncident(false)}}
         dialogTitle={`Record a new incident`}
-        maxWidthClass={`max-w-lg`}
+        maxWidthClass={`max-w-6xl`}
       >
-        {/* <ResolveIncident 
-          doResolve={()=>{resolveIncident()}}
-          close={()=>{setResolving(false)}}
-        /> */}
+        <RecordNewIncident />
       </ModalDialog>
     </>
   )
